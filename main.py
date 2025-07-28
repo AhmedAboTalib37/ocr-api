@@ -6,12 +6,17 @@ import threading
 
 app = Flask(__name__)
 
-# Set your credentials JSON
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "my-project-key-01a2b3c4.json"
+# تحديد مسار ملف الكريدنشلز (سواء محليًا أو من /etc/secrets)
+CREDENTIAL_PATH = "my-project-key-01a2b3c4.json"
+if os.path.exists("/etc/secrets/" + CREDENTIAL_PATH):
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = f"/etc/secrets/{CREDENTIAL_PATH}"
+else:
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = CREDENTIAL_PATH
 
-# إنشاء client مرة واحدة علشان نستخدمه في كل الـ requests
+# إنشاء عميل Google Vision مرة واحدة
 vision_client = vision.ImageAnnotatorClient()
 
+# لوك لتأمين الـ Thread عند استخدام الـ client
 lock = threading.Lock()
 
 @app.route('/upload', methods=['POST'])
@@ -24,19 +29,16 @@ def upload_image():
     filepath = os.path.join("uploads", filename)
     file.save(filepath)
 
-    # OCR using Google Vision
     with open(filepath, "rb") as image_file:
         content = image_file.read()
 
     image = vision.Image(content=content)
 
-    # نستخدم lock علشان نضمن سلامة الـ Thread لما يستخدم نفس الـ client
     with lock:
         response = vision_client.text_detection(image=image)
 
     texts = response.text_annotations
 
-    # حذف الصورة بعد التحليل لتقليل الضغط
     os.remove(filepath)
 
     if texts:
@@ -48,5 +50,4 @@ if __name__ == '__main__':
     if not os.path.exists("uploads"):
         os.makedirs("uploads")
 
-    # نشغلها على Gunicorn في البيئة الحقيقية، لكن مؤقتًا للتجريب:
     app.run(host="0.0.0.0", port=5000, threaded=True)
